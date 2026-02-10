@@ -5,4 +5,4 @@
 # Language things
 __pycache__/
 target/
-venv/
+.venv/
