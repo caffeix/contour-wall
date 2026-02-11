@@ -19,6 +19,7 @@ from game_input import PhysicalMotionController, normalize_key
 from score_display import draw_score
 from game_over_display import draw_game_over
 from highscore_board import HighscoreBoard, highscore_path
+from countdown_display import show_countdown
 
 
 class PoseController:
@@ -236,6 +237,9 @@ def hole_runner(motion_controller=None):
 		print("Hole runner controls: A/D or Left/Right arrows. Press Q to quit.")
 	else:
 		print("Hole runner camera mode: move left/right. Press Q to quit.")
+
+	# Countdown before game starts
+	show_countdown(cw)
 
 	while True:
 		now = time.time()
