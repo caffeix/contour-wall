@@ -1,4 +1,4 @@
-from contourwall import ContourWall
+from contourwall_emulator import ContourWallEmulator
 import argparse
 import time
 import random
@@ -360,7 +360,7 @@ def hole_runner(motion_controller=None):
 
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="Hole runner for ContourWall.")
+	parser = argparse.ArgumentParser(description="Hole runner for ContourWallEmulator.")
 	parser.add_argument(
 		"--physical",
 		action="store_true",
@@ -379,8 +379,8 @@ if __name__ == "__main__":
 	)
 	args = parser.parse_args()
 
-	cw = ContourWall()
-	cw.new_with_ports("/dev/ttyACM4", "/dev/ttyACM2", "/dev/ttyACM0", "/dev/ttyACM5", "/dev/ttyACM3", "/dev/ttyACM1")
+	cw = ContourWallEmulator()
+	cw.new()
 
 	motion_controller = None
 	if args.physical:
