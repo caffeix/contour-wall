@@ -34,6 +34,9 @@ if str(WRAPPER_DIR) not in sys.path:
 
 from contourwall import ContourWall
 from game_input import LEFT_KEYS, RIGHT_KEYS, PhysicalMotionController, normalize_key
+from lives_display import draw_lives
+from score_display import draw_score
+from highscore_board import HighscoreBoard, highscore_path
 
 
 @dataclass
@@ -404,30 +407,17 @@ class SubwaySurfersGame:
         self._draw_runner()
         self._draw_hud()
 
-    def _wait_for_restart(self) -> bool:
+    def _wait_for_restart(self) -> None:
         print(
-            f"Game over. Score: {self.score}. Distance: {int(self.distance)}. "
-            "Press R to restart or Q to quit."
+            f"Game over. Score: {self.score}. Distance: {int(self.distance)}."
         )
         flash = False
-        while True:
+        for _ in range(10):
             flash = not flash
             self.cw.fill_solid(18, 0, 0) if flash else self.cw.fill_solid(0, 0, 0)
-            key = normalize_key(self.cw.show(sleep_ms=220))
-            if key in (27, ord("q"), ord("Q")):
-                return False
-            if key in (ord("r"), ord("R")):
-                return True
+            self.cw.show(sleep_ms=220)
 
-            if self.motion_controller is not None:
-                self.motion_controller.read_target_col(self.cols)
-                camera_key = normalize_key(self.motion_controller.read_key())
-                if camera_key in (27, ord("q"), ord("Q")):
-                    return False
-                if camera_key in (ord("r"), ord("R")):
-                    return True
-
-    def run(self) -> None:
+    def run(self) -> int:
         print("Subway Surfers (ContourWall Edition)")
         if self.use_physical_input:
             print("Physical mode enabled: move left-right in front of your webcam.")
@@ -440,36 +430,35 @@ class SubwaySurfersGame:
             self._draw_digit(count, (80, 220, 255))
             self.cw.show(sleep_ms=1000)
 
-        running = True
-        while running:
-            self.reset_round()
-            key = -1
+        self.reset_round()
+        key = -1
 
-            while self.lives > 0:
-                frame_start = time.perf_counter()
+        while self.lives > 0:
+            frame_start = time.perf_counter()
 
-                physical_col = None
-                if self.motion_controller is not None:
-                    physical_col = self.motion_controller.read_target_col(self.cols)
-                    camera_key = normalize_key(self.motion_controller.read_key())
-                    if camera_key in (27, ord("q"), ord("Q")):
-                        return
-                    if camera_key != -1:
-                        key = camera_key
+            physical_col = None
+            if self.motion_controller is not None:
+                physical_col = self.motion_controller.read_target_col(self.cols)
+                camera_key = normalize_key(self.motion_controller.read_key())
+                if camera_key in (27, ord("q"), ord("Q")):
+                    return self.score
+                if camera_key != -1:
+                    key = camera_key
 
-                if not self._process_input(key, physical_col):
-                    return
+            if not self._process_input(key, physical_col):
+                return self.score
 
-                self._update_world()
-                self._render()
-                key = normalize_key(self.cw.show())
+            self._update_world()
+            self._render()
+            key = normalize_key(self.cw.show())
 
-                frame_time = time.perf_counter() - frame_start
-                target_dt = 0.051 if self.use_physical_input else 0.044
-                if frame_time < target_dt:
-                    time.sleep(target_dt - frame_time)
+            frame_time = time.perf_counter() - frame_start
+            target_dt = 0.051 if self.use_physical_input else 0.044
+            if frame_time < target_dt:
+                time.sleep(target_dt - frame_time)
 
-            running = self._wait_for_restart()
+        self._wait_for_restart()
+        return self.score
 
 
 def main() -> None:
@@ -496,10 +485,14 @@ def main() -> None:
 
     random.seed()
 
-    "COM10", "COM12", "COM9", "COM14", "COM13", "COM11"
-    1,3,0,5,4,2
     cw = ContourWall()
     cw.new_with_ports("/dev/ttyACM4", "/dev/ttyACM2", "/dev/ttyACM0", "/dev/ttyACM5", "/dev/ttyACM3", "/dev/ttyACM1")
+
+    highscore_path_var = highscore_path(EXAMPLES_DIR, "subway_surfers")
+    highscores = []
+    highscore_board = HighscoreBoard(cw.rows, cw.cols, cw.pixels)
+    highscores = highscore_board.load(highscore_path_var)
+    last_initials = ""
 
     motion_controller: PhysicalMotionController | None = None
     if args.physical:
@@ -512,15 +505,41 @@ def main() -> None:
             print(f"[INPUT WARN] {exc}")
             print("[INPUT WARN] Falling back to keyboard input.")
 
-    game = SubwaySurfersGame(cw, motion_controller=motion_controller)
-    try:
-        game.run()
-    finally:
-        if motion_controller is not None:
-            motion_controller.close()
-        cw.fill_solid(0, 0, 0)
-        cw.show()
-        cv.destroyAllWindows()
+    while True:
+        game = SubwaySurfersGame(cw, motion_controller=motion_controller)
+        score = game.run()
+
+        # Record highscore
+        last_initials, highscores = highscore_board.record(
+            highscores,
+            score,
+            last_initials,
+            path=highscore_path_var,
+        )
+
+        # Show highscores
+        if highscores:
+            for idx, (name, score_val) in enumerate(highscores[:10], start=1):
+                print(f"{idx}. {name}: {score_val}")
+
+        flash = False
+        restart = False
+        while True:
+            flash = not flash
+            highscore_board.draw(highscores, last_initials, score, flash)
+            key = cw.show(sleep_ms=500)
+            if key in (27, ord("q"), ord("Q")) or key == -1:
+                if motion_controller is not None:
+                    motion_controller.close()
+                cw.fill_solid(0, 0, 0)
+                cw.show()
+                cv.destroyAllWindows()
+                return
+            if key in (ord("r"), ord("R")):
+                restart = True
+                break
+        if not restart:
+            break
 
 
 if __name__ == "__main__":

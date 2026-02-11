@@ -4,6 +4,7 @@ import time
 import random
 import math
 import sys
+from pathlib import Path
 
 try:
 	import cv2 as cv
@@ -17,6 +18,8 @@ except ImportError:
 from game_input import PhysicalMotionController, normalize_key
 from score_display import draw_score
 from game_over_display import draw_game_over
+from highscore_board import HighscoreBoard, highscore_path
+from countdown_display import show_countdown
 
 
 class PoseController:
@@ -181,6 +184,14 @@ def update_particles(particles):
 
 def hole_runner(motion_controller=None):
 	rows, cols = cw.pixels.shape[:2]
+
+	EXAMPLES_DIR = Path(__file__).resolve().parent
+	highscore_path_var = highscore_path(EXAMPLES_DIR, "hole_runner")
+	highscores = []
+	highscore_board = HighscoreBoard(rows, cols, cw.pixels)
+	highscores = highscore_board.load(highscore_path_var)
+	last_initials = ""
+
 	player_row = rows - 2
 	player_col = cols // 2
 	player_col_float = float(player_col)
@@ -221,6 +232,8 @@ def hole_runner(motion_controller=None):
 
 	# Player trail effect
 	player_trail = []  # List of recent player positions
+
+	show_countdown(3, cw)
 
 	if motion_controller is None:
 		print("Hole runner controls: A/D or Left/Right arrows. Press Q to quit.")
@@ -358,6 +371,37 @@ def hole_runner(motion_controller=None):
 
 	print(f"Game over. Score: {score}")
 
+	# Record highscore
+	last_initials, highscores = highscore_board.record(
+		highscores,
+		score,
+		last_initials,
+		path=highscore_path_var,
+	)
+
+	# Show highscores
+	if highscores:
+		for idx, (name, score_val) in enumerate(highscores[:10], start=1):
+			print(f"{idx}. {name}: {score_val}")
+
+	flash = False
+	while True:
+		flash = not flash
+		highscore_board.draw(highscores, last_initials, score, flash)
+		key = cw.show(sleep_ms=500)
+		if key in (27, ord("q"), ord("Q")) or key == -1:
+			return False
+		if key in (ord("r"), ord("R")):
+			return True
+
+		if motion_controller is not None:
+			motion_controller.read_target_col(cols)
+			camera_key = normalize_key(motion_controller.read_key())
+			if camera_key in (27, ord("q"), ord("Q")):
+				return False
+			if camera_key in (ord("r"), ord("R")):
+				return True
+
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser(description="Hole runner for ContourWall.")
@@ -402,7 +446,8 @@ if __name__ == "__main__":
 				print("[INPUT WARN] Falling back to keyboard input.")
 
 	try:
-		hole_runner(motion_controller=motion_controller)
+		while hole_runner(motion_controller=motion_controller):
+			pass
 	finally:
 		if motion_controller is not None:
 			motion_controller.close()
