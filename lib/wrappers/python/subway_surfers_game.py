@@ -5,7 +5,7 @@ Subway Surfers style endless runner for the ContourWall emulator.
 Controls:
 - Move lanes: Left/Right arrows or A/D
 - Quit: Q or ESC
-- Restart after game over: R
+- Returns to launcher after game over
 
 Physical mode:
 - Start with --physical
@@ -32,8 +32,9 @@ WRAPPER_DIR = EXAMPLES_DIR.parent
 if str(WRAPPER_DIR) not in sys.path:
     sys.path.insert(0, str(WRAPPER_DIR))
 
-from contourwall import ContourWall
+from contourwall_emulator import ContourWallEmulator
 from game_input import LEFT_KEYS, RIGHT_KEYS, PhysicalMotionController, normalize_key
+from highscore_board import HighscoreBoard
 
 
 @dataclass
@@ -51,7 +52,7 @@ class Coin:
 class SubwaySurfersGame:
     def __init__(
         self,
-        wall: ContourWall,
+        wall: ContourWallEmulator,
         motion_controller: PhysicalMotionController | None = None,
     ):
         self.cw = wall
@@ -86,6 +87,22 @@ class SubwaySurfersGame:
 
         self.speed = self.base_speed
         self.spawn_timer = 15
+        self.highscore_path = EXAMPLES_DIR / "subway_surfers.xml"
+        self.highscores: list[tuple[str, int]] = []
+        self.last_initials = "YOU"
+        self.highscore_board = HighscoreBoard(self.rows, self.cols, self.cw.pixels)
+        self.highscores = self.highscore_board.load(self.highscore_path)
+
+    def _record_highscore(self) -> None:
+        self.last_initials, self.highscores = self.highscore_board.record_and_save(
+            self.highscores,
+            self.score,
+            self.last_initials,
+            self.highscore_path,
+        )
+
+    def _draw_highscores(self, flash: bool) -> None:
+        self.highscore_board.draw(self.highscores, self.last_initials, self.score, flash)
 
     def _compute_lane_centers(self) -> list[int]:
         return [
@@ -372,31 +389,19 @@ class SubwaySurfersGame:
             self._fill_rect(1, 2, 0, distance_width, (60, 220, 110))
 
     def _draw_digit(self, digit: int, color: tuple[int, int, int]) -> None:
-        patterns = {
-            0: ["111", "101", "101", "101", "111"],
-            1: ["010", "110", "010", "010", "111"],
-            2: ["111", "001", "111", "100", "111"],
-            3: ["111", "001", "111", "001", "111"],
-            4: ["101", "101", "111", "001", "001"],
-            5: ["111", "100", "111", "001", "111"],
-            6: ["111", "100", "111", "101", "111"],
-            7: ["111", "001", "001", "001", "001"],
-            8: ["111", "101", "111", "101", "111"],
-            9: ["111", "101", "111", "001", "111"],
-        }
-        pattern = patterns.get(digit)
-        if pattern is None:
+        if digit < 0 or digit > 9:
             return
 
         start_row = max(2, (self.rows // 2) - 2)
         start_col = max(1, (self.cols // 2) - 1)
         self.cw.fill_solid(0, 0, 0)
-        for r, row in enumerate(pattern):
-            for c, bit in enumerate(row):
-                if bit == "1":
-                    self._fill_rect(
-                        start_row + r, start_row + r + 1, start_col + c, start_col + c + 1, color
-                    )
+        right_col = min(self.cols - 1, start_col + 2)
+        self.highscore_board.draw_number(
+            value=digit,
+            top_row=start_row,
+            right_col=right_col,
+            color=color,
+        )
 
     def _render(self) -> None:
         self._draw_background()
@@ -407,25 +412,17 @@ class SubwaySurfersGame:
     def _wait_for_restart(self) -> bool:
         print(
             f"Game over. Score: {self.score}. Distance: {int(self.distance)}. "
-            "Press R to restart or Q to quit."
+            "Returning to launcher."
         )
+        self._record_highscore()
+        start = time.perf_counter()
         flash = False
-        while True:
+        while time.perf_counter() - start < 5.0:
             flash = not flash
             self.cw.fill_solid(18, 0, 0) if flash else self.cw.fill_solid(0, 0, 0)
-            key = normalize_key(self.cw.show(sleep_ms=220))
-            if key in (27, ord("q"), ord("Q")):
-                return False
-            if key in (ord("r"), ord("R")):
-                return True
-
-            if self.motion_controller is not None:
-                self.motion_controller.read_target_col(self.cols)
-                camera_key = normalize_key(self.motion_controller.read_key())
-                if camera_key in (27, ord("q"), ord("Q")):
-                    return False
-                if camera_key in (ord("r"), ord("R")):
-                    return True
+            self._draw_highscores(flash)
+            self.cw.show(sleep_ms=220)
+        return False
 
     def run(self) -> None:
         print("Subway Surfers (ContourWall Edition)")
@@ -498,7 +495,7 @@ def main() -> None:
 
     "COM10", "COM12", "COM9", "COM14", "COM13", "COM11"
     1,3,0,5,4,2
-    cw = ContourWall()
+    cw = ContourWallEmulator()
     cw.new_with_ports("/dev/ttyACM4", "/dev/ttyACM2", "/dev/ttyACM0", "/dev/ttyACM5", "/dev/ttyACM3", "/dev/ttyACM1")
 
     motion_controller: PhysicalMotionController | None = None
