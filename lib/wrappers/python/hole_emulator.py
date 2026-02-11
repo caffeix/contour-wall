@@ -1,4 +1,4 @@
-from contourwall import ContourWall
+from contourwall_emulator import ContourWallEmulator
 import argparse
 import time
 import random
@@ -184,14 +184,6 @@ def update_particles(particles):
 
 def hole_runner(motion_controller=None):
 	rows, cols = cw.pixels.shape[:2]
-
-	EXAMPLES_DIR = Path(__file__).resolve().parent
-	highscore_path_var = highscore_path(EXAMPLES_DIR, "hole_runner")
-	highscores = []
-	highscore_board = HighscoreBoard(rows, cols, cw.pixels)
-	highscores = highscore_board.load(highscore_path_var)
-	last_initials = ""
-
 	player_row = rows - 2
 	player_col = cols // 2
 	player_col_float = float(player_col)
@@ -233,12 +225,21 @@ def hole_runner(motion_controller=None):
 	# Player trail effect
 	player_trail = []  # List of recent player positions
 
-	show_countdown(3, cw)
+	# Highscore variables
+	EXAMPLES_DIR = Path(__file__).resolve().parent
+	highscore_path_var = highscore_path(EXAMPLES_DIR, "hole_runner")
+	highscores = []
+	last_initials = "Anm"
+	highscore_board = HighscoreBoard(rows, cols, cw.pixels)
+	highscores = highscore_board.load(highscore_path_var)
 
 	if motion_controller is None:
 		print("Hole runner controls: A/D or Left/Right arrows. Press Q to quit.")
 	else:
 		print("Hole runner camera mode: move left/right. Press Q to quit.")
+
+	# Countdown before game starts
+	show_countdown(cw)
 
 	while True:
 		now = time.time()
@@ -249,7 +250,7 @@ def hole_runner(motion_controller=None):
 
 		key = read_key() if motion_controller is None else normalize_key(motion_controller.read_key())
 		if key in (ord('q'), 27):
-			break
+			return False
 
 		if motion_controller is None:
 			move_key = None
@@ -369,8 +370,6 @@ def hole_runner(motion_controller=None):
 	cw.show()
 	time.sleep(2)  # Show final screen for 2 seconds
 
-	print(f"Game over. Score: {score}")
-
 	# Record highscore
 	last_initials, highscores = highscore_board.record(
 		highscores,
@@ -379,17 +378,25 @@ def hole_runner(motion_controller=None):
 		path=highscore_path_var,
 	)
 
-	# Show highscores
+	print(f"Game over. Score: {score}")
+
+	# Show highscores and wait for restart or quit
+	print("Press R to restart or Q to quit.")
 	if highscores:
+		print("Top scores:")
 		for idx, (name, score_val) in enumerate(highscores[:10], start=1):
-			print(f"{idx}. {name}: {score_val}")
+			print(f" {idx:>2}. {name} - {score_val}")
 
 	flash = False
 	while True:
 		flash = not flash
+		if flash:
+			cw.pixels[:] = 6, 6, 20
+		else:
+			cw.pixels[:] = 0, 0, 0
 		highscore_board.draw(highscores, last_initials, score, flash)
-		key = cw.show(sleep_ms=500)
-		if key in (27, ord("q"), ord("Q")) or key == -1:
+		key = cw.show(sleep_ms=220)
+		if key in (27, ord("q"), ord("Q")):
 			return False
 		if key in (ord("r"), ord("R")):
 			return True
@@ -404,7 +411,7 @@ def hole_runner(motion_controller=None):
 
 
 if __name__ == "__main__":
-	parser = argparse.ArgumentParser(description="Hole runner for ContourWall.")
+	parser = argparse.ArgumentParser(description="Hole runner for ContourWallEmulator.")
 	parser.add_argument(
 		"--physical",
 		action="store_true",
@@ -423,8 +430,8 @@ if __name__ == "__main__":
 	)
 	args = parser.parse_args()
 
-	cw = ContourWall()
-	cw.new_with_ports("/dev/ttyACM4", "/dev/ttyACM2", "/dev/ttyACM0", "/dev/ttyACM5", "/dev/ttyACM3", "/dev/ttyACM1")
+	cw = ContourWallEmulator()
+	cw.new()
 
 	motion_controller = None
 	if args.physical:
