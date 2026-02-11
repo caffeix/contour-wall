@@ -126,6 +126,37 @@ class HighscoreBoard:
             self.save(path, highscores)
         return initials, highscores
 
+    def record_and_save(
+        self,
+        highscores: list[tuple[str, int]],
+        score: int,
+        last_initials: str,
+        path: Path,
+        allow_prompt: bool = True,
+    ) -> tuple[str, list[tuple[str, int]]]:
+        recorded = False
+        if score > 0:
+            if allow_prompt and sys.stdin and sys.stdin.isatty():
+                previous = list(highscores)
+                last_initials, highscores = self.record(
+                    highscores,
+                    score,
+                    last_initials,
+                    path=None,
+                )
+                recorded = highscores != previous
+
+            if not recorded:
+                initials = self.normalize_initials(last_initials)
+                if not any(name == initials and value == score for name, value in highscores):
+                    highscores.append((initials, score))
+                    highscores.sort(key=lambda item: item[1], reverse=True)
+                    highscores = highscores[:10]
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.save(path, highscores)
+        return last_initials, highscores
+
     @staticmethod
     def normalize_initials(name: str) -> str:
         cleaned = "".join(ch for ch in name if ch.isalnum()).upper()
@@ -216,7 +247,7 @@ class HighscoreBoard:
             start_left = max(0, (self.cols - total_width) // 2)
 
             rank_right_col = min(self.cols - 1, start_left + rank_width - 1)
-            self._draw_number(
+            self.draw_number(
                 value=entry.rank,
                 top_row=row,
                 right_col=rank_right_col,
@@ -225,7 +256,7 @@ class HighscoreBoard:
 
             name_left = rank_right_col + rank_name_gap + 1
             if name_left < self.cols:
-                self._draw_text(
+                self.draw_text(
                     text=entry.name,
                     top_row=row,
                     left_col=name_left,
@@ -234,14 +265,14 @@ class HighscoreBoard:
 
             score_left = name_left + name_width + name_score_gap
             score_right_col = min(self.cols - 1, score_left + score_width - 1)
-            self._draw_number(
+            self.draw_number(
                 value=entry.score,
                 top_row=row,
                 right_col=score_right_col,
                 color=score_color,
             )
 
-    def _draw_number(
+    def draw_number(
         self,
         value: int,
         top_row: int,
@@ -277,7 +308,7 @@ class HighscoreBoard:
                         self.pixels[top_row + r, cursor + c] = color
             cursor += digit_w + gap
 
-    def _draw_text(
+    def draw_text(
         self,
         text: str,
         top_row: int,
