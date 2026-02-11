@@ -4,6 +4,7 @@ import time
 import random
 import math
 import sys
+from pathlib import Path
 
 try:
 	import cv2 as cv
@@ -17,6 +18,7 @@ except ImportError:
 from game_input import PhysicalMotionController, normalize_key
 from score_display import draw_score
 from game_over_display import draw_game_over
+from highscore_board import HighscoreBoard, highscore_path
 
 
 class PoseController:
@@ -222,6 +224,14 @@ def hole_runner(motion_controller=None):
 	# Player trail effect
 	player_trail = []  # List of recent player positions
 
+	# Highscore variables
+	EXAMPLES_DIR = Path(__file__).resolve().parent
+	highscore_path_var = highscore_path(EXAMPLES_DIR, "hole_runner")
+	highscores = []
+	last_initials = "Anm"
+	highscore_board = HighscoreBoard(rows, cols, cw.pixels)
+	highscores = highscore_board.load(highscore_path_var)
+
 	if motion_controller is None:
 		print("Hole runner controls: A/D or Left/Right arrows. Press Q to quit.")
 	else:
@@ -236,7 +246,7 @@ def hole_runner(motion_controller=None):
 
 		key = read_key() if motion_controller is None else normalize_key(motion_controller.read_key())
 		if key in (ord('q'), 27):
-			break
+			return False
 
 		if motion_controller is None:
 			move_key = None
@@ -356,7 +366,44 @@ def hole_runner(motion_controller=None):
 	cw.show()
 	time.sleep(2)  # Show final screen for 2 seconds
 
+	# Record highscore
+	last_initials, highscores = highscore_board.record(
+		highscores,
+		score,
+		last_initials,
+		path=highscore_path_var,
+	)
+
 	print(f"Game over. Score: {score}")
+
+	# Show highscores and wait for restart or quit
+	print("Press R to restart or Q to quit.")
+	if highscores:
+		print("Top scores:")
+		for idx, (name, score_val) in enumerate(highscores[:10], start=1):
+			print(f" {idx:>2}. {name} - {score_val}")
+
+	flash = False
+	while True:
+		flash = not flash
+		if flash:
+			cw.pixels[:] = 6, 6, 20
+		else:
+			cw.pixels[:] = 0, 0, 0
+		highscore_board.draw(highscores, last_initials, score, flash)
+		key = cw.show(sleep_ms=220)
+		if key in (27, ord("q"), ord("Q")):
+			return False
+		if key in (ord("r"), ord("R")):
+			return True
+
+		if motion_controller is not None:
+			motion_controller.read_target_col(cols)
+			camera_key = normalize_key(motion_controller.read_key())
+			if camera_key in (27, ord("q"), ord("Q")):
+				return False
+			if camera_key in (ord("r"), ord("R")):
+				return True
 
 
 if __name__ == "__main__":
@@ -402,7 +449,8 @@ if __name__ == "__main__":
 				print("[INPUT WARN] Falling back to keyboard input.")
 
 	try:
-		hole_runner(motion_controller=motion_controller)
+		while hole_runner(motion_controller=motion_controller):
+			pass
 	finally:
 		if motion_controller is not None:
 			motion_controller.close()
