@@ -381,9 +381,7 @@ class SubwaySurfersGame:
             self._set_pixel(r, c, color)
 
     def _draw_hud(self) -> None:
-        for i in range(self.lives):
-            start = i * 3
-            self._fill_rect(0, 1, start, start + 2, (245, 70, 70))
+        draw_lives(self.cw, self.lives, start_row=0, start_col=0, spacing=4)
 
         score_width = min(self.cols, self.score // 110)
         if score_width > 0:
@@ -432,9 +430,11 @@ class SubwaySurfersGame:
         )
         self._record_highscore()
         start = time.perf_counter()
+        flash = False
         while time.perf_counter() - start < 5.0:
+            flash = not flash
             self.cw.fill_solid(0, 0, 0)
-            self._draw_highscores(False)
+            self._draw_highscores(flash)
             self.cw.show(sleep_ms=220)
 
     def run(self) -> int:

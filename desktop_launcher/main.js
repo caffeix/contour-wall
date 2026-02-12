@@ -155,3 +155,46 @@ ipcMain.handle('launch-game', async (event, payload) => {
     return { ok: false, message: String(error) };
   }
 });
+
+ipcMain.handle('upload-user', async (event, payload) => {
+  const playerName = typeof payload?.playerName === 'string' ? payload.playerName.trim() : '';
+  const imageBuffer = payload?.imageBuffer ? Buffer.from(payload.imageBuffer) : null;
+
+  if (!playerName) {
+    return { ok: false, message: 'Player name is required.' };
+  }
+  if (!imageBuffer || imageBuffer.length === 0) {
+    return { ok: false, message: 'Photo capture failed.' };
+  }
+
+  try {
+    const formData = new FormData();
+    const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+    formData.append('image', imageBlob, 'player.jpg');
+
+    const response = await fetch('https://api.deltacraft.io/api/users', {
+      method: 'POST',
+      headers: {
+        apiPassword: 'KaAsKrOkAnTjE123',
+        userName: playerName,
+      },
+      body: formData,
+    });
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      return { ok: false, message: `Upload failed (${response.status}): ${responseText}` };
+    }
+
+    let data = null;
+    try {
+      data = responseText ? JSON.parse(responseText) : null;
+    } catch (parseError) {
+      data = { raw: responseText };
+    }
+
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, message: String(error) };
+  }
+});

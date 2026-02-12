@@ -24,36 +24,41 @@ async function capturePhoto() {
 
   const devices = await navigator.mediaDevices.enumerateDevices();
   const videoInputs = devices.filter((device) => device.kind === 'videoinput');
-  const preferredDevice = videoInputs[1] || videoInputs[0];
+  if (!videoInputs.length) {
+    throw new Error('No camera devices found.');
+  }
 
-  let stream;
+  const preferredDevice = videoInputs[1] || videoInputs[0];
+  const deviceQueue = [preferredDevice, ...videoInputs.filter((d) => d.deviceId !== preferredDevice.deviceId)];
+
   const video = document.createElement('video');
+  video.muted = true;
+  video.playsInline = true;
   const canvas = document.createElement('canvas');
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: 640,
-        height: 480,
-        deviceId: preferredDevice ? { exact: preferredDevice.deviceId } : undefined,
-      },
-      audio: false,
-    });
+
+  const captureFromStream = async (stream) => {
     video.srcObject = stream;
     await video.play();
 
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Camera did not respond.'));
-      }, 5000);
-      video.addEventListener(
-        'loadeddata',
-        () => {
-          clearTimeout(timeout);
-          resolve();
-        },
-        { once: true },
-      );
+    const ready = await new Promise((resolve) => {
+      const timeoutAt = Date.now() + 8000;
+      const checkReady = () => {
+        if (video.readyState >= 3 && video.videoWidth > 0 && video.videoHeight > 0) {
+          resolve(true);
+          return;
+        }
+        if (Date.now() >= timeoutAt) {
+          resolve(false);
+          return;
+        }
+        requestAnimationFrame(checkReady);
+      };
+      checkReady();
     });
+
+    if (!ready) {
+      throw new Error('Camera did not respond.');
+    }
 
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
@@ -68,32 +73,46 @@ async function capturePhoto() {
       throw new Error('Failed to encode camera image.');
     }
     return blob;
-  } finally {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
+  };
+
+  let lastError = null;
+  for (const device of deviceQueue) {
+    let stream = null;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: 640,
+          height: 480,
+          deviceId: device?.deviceId ? { exact: device.deviceId } : undefined,
+        },
+        audio: false,
+      });
+      return await captureFromStream(stream);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
     }
   }
+
+  throw lastError || new Error('Camera did not respond.');
 }
 
 async function registerUser(playerName) {
   const imageBlob = await capturePhoto();
-  const formData = new FormData();
-  formData.append('image', imageBlob, 'player.jpg');
-
-  const response = await fetch(apiConfig.url, {
-    method: 'POST',
-    headers: {
-      apiPassword: apiConfig.apiPassword,
-      userName: playerName,
-    },
-    body: formData,
+  const imageBuffer = await imageBlob.arrayBuffer();
+  const result = await window.launcher.uploadUser({
+    playerName,
+    imageBuffer,
   });
 
-  if (!response.ok) {
-    throw new Error(`API request failed (${response.status}).`);
+  if (!result.ok) {
+    throw new Error(result.message || 'Upload failed.');
   }
 
-  return response.json();
+  return result.data;
 }
 
 document.querySelectorAll('[data-game]').forEach((button) => {
@@ -103,7 +122,7 @@ document.querySelectorAll('[data-game]').forEach((button) => {
     let registrationError = null;
 
     if (playerName) {
-      statusEl.textContent = 'Capturing photo...';
+      statusEl.textContent = 'Registering player...';
       try {
         await registerUser(playerName);
       } catch (error) {
@@ -116,7 +135,7 @@ document.querySelectorAll('[data-game]').forEach((button) => {
     if (result.ok) {
       const name = nameInput ? nameInput.value.trim() : '';
       if (registrationError) {
-        statusEl.textContent = `Launched for ${name}. Photo upload failed.`;
+        statusEl.textContent = `Launched for ${name}. Registration failed.`;
       } else {
         statusEl.textContent = name
           ? `Launched in a new terminal window for ${name}.`
