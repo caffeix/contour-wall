@@ -57,6 +57,7 @@ class SubwaySurfersGame:
         self,
         wall: ContourWall,
         motion_controller: PhysicalMotionController | None = None,
+        player_name: str | None = None,
     ):
         self.cw = wall
         self.motion_controller = motion_controller
@@ -90,6 +91,28 @@ class SubwaySurfersGame:
 
         self.speed = self.base_speed
         self.spawn_timer = 15
+        self.highscore_path = EXAMPLES_DIR / "subway_surfers.xml"
+        self.highscores: list[tuple[str, int]] = []
+        self.last_initials = (
+            HighscoreBoard.normalize_initials(player_name)
+            if player_name
+            else "YOU"
+        )
+        self.allow_prompt = not bool(player_name)
+        self.highscore_board = HighscoreBoard(self.rows, self.cols, self.cw.pixels)
+        self.highscores = self.highscore_board.load(self.highscore_path)
+
+    def _record_highscore(self) -> None:
+        self.last_initials, self.highscores = self.highscore_board.record_and_save(
+            self.highscores,
+            self.score,
+            self.last_initials,
+            self.highscore_path,
+            allow_prompt=self.allow_prompt,
+        )
+
+    def _draw_highscores(self, flash: bool) -> None:
+        self.highscore_board.draw(self.highscores, self.last_initials, self.score, flash)
 
     def _compute_lane_centers(self) -> list[int]:
         return [
@@ -475,6 +498,12 @@ def main() -> None:
         action="store_true",
         help="Show webcam debug window in --physical mode.",
     )
+    parser.add_argument(
+        "--player-name",
+        type=str,
+        default="",
+        help="Player name to use for highscores.",
+    )
     args = parser.parse_args()
 
     random.seed()
@@ -499,41 +528,20 @@ def main() -> None:
             print(f"[INPUT WARN] {exc}")
             print("[INPUT WARN] Falling back to keyboard input.")
 
-    while True:
-        game = SubwaySurfersGame(cw, motion_controller=motion_controller)
-        score = game.run()
-
-        # Record highscore
-        last_initials, highscores = highscore_board.record(
-            highscores,
-            score,
-            last_initials,
-            path=highscore_path_var,
-        )
-
-        # Show highscores
-        if highscores:
-            for idx, (name, score_val) in enumerate(highscores[:10], start=1):
-                print(f"{idx}. {name}: {score_val}")
-
-        flash = False
-        restart = False
-        while True:
-            flash = not flash
-            highscore_board.draw(highscores, last_initials, score, flash)
-            key = cw.show(sleep_ms=500)
-            if key in (27, ord("q"), ord("Q")) or key == -1:
-                if motion_controller is not None:
-                    motion_controller.close()
-                cw.fill_solid(0, 0, 0)
-                cw.show()
-                cv.destroyAllWindows()
-                return
-            if key in (ord("r"), ord("R")):
-                restart = True
-                break
-        if not restart:
-            break
+    player_name = args.player_name.strip()
+    game = SubwaySurfersGame(
+        cw,
+        motion_controller=motion_controller,
+        player_name=player_name or None,
+    )
+    try:
+        game.run()
+    finally:
+        if motion_controller is not None:
+            motion_controller.close()
+        cw.fill_solid(0, 0, 0)
+        cw.show()
+        cv.destroyAllWindows()
 
 
 if __name__ == "__main__":
