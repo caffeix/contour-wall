@@ -367,10 +367,6 @@ class SubwaySurfersGame:
         if score_width > 0:
             self._fill_rect(0, 1, self.cols - score_width, self.cols, (90, 175, 255))
 
-        coin_width = min(self.cols // 3, self.collected_coins * 2)
-        if coin_width > 0:
-            self._fill_rect(1, 2, self.cols - coin_width, self.cols, (255, 220, 90))
-
         distance_width = min(self.cols // 2, int(self.distance // 22))
         if distance_width > 0:
             self._fill_rect(1, 2, 0, distance_width, (60, 220, 110))
