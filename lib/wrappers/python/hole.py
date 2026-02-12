@@ -18,6 +18,7 @@ except ImportError:
 from game_input import PhysicalMotionController, normalize_key
 from score_display import draw_score
 from game_over_display import draw_game_over
+from lives_display import draw_lives
 from highscore_board import HighscoreBoard, highscore_path
 from countdown_display import show_countdown
 
@@ -210,6 +211,8 @@ def hole_runner(motion_controller=None):
 	move_repeat_interval = 0.05
 
 	score = 0
+	lives = 3
+	invuln_timer = 0
 	line_count = 0  # Counter for total lines drawn
 
 	# Enhanced color schemes with gradients
@@ -246,6 +249,9 @@ def hole_runner(motion_controller=None):
 			time.sleep(0.002)
 			continue
 		last_tick = now
+
+		if invuln_timer > 0:
+			invuln_timer -= 1
 
 		key = read_key() if motion_controller is None else normalize_key(motion_controller.read_key())
 		if key in (ord('q'), 27):
@@ -298,7 +304,13 @@ def hole_runner(motion_controller=None):
 					# Add score particles
 					add_score_particles(particles, player_row, player_col, score)
 				else:
-					break
+					lives -= 1
+					invuln_timer = 30  # 1 second of invulnerability
+					if lives <= 0:
+						break
+					# Reset line position to give player another chance
+					line_row = 0
+					hole_start = random.randint(0, cols - hole_width)
 
 		# Update background animation
 		background_offset += 1
@@ -318,12 +330,20 @@ def hole_runner(motion_controller=None):
 		# Draw score at top left
 		draw_score(cw.pixels, score, start_row=0, position='center')
 
+		# Draw lives
+		draw_lives(cw, lives, start_row=1, start_col=0, spacing=4, color=(255, 0, 0))
+
 		if 0 <= line_row < rows:
 			current_scheme = color_schemes[score % len(color_schemes)]
 			draw_gradient_line(cw.pixels, line_row, hole_start, hole_width, current_scheme, score)
 
+		# Modify player color for damage flash
+		display_color = player_color
+		if invuln_timer > 0 and (invuln_timer // 5) % 2 == 1:  # Flash every 5 frames
+			display_color = (255, 0, 255)  # Purple flash
+
 		# Draw player with trail and glow
-		draw_player_with_trail(cw.pixels, player_row, player_col, player_trail, player_color)
+		draw_player_with_trail(cw.pixels, player_row, player_col, player_trail, display_color)
 
 		cw.show()
 
@@ -347,11 +367,11 @@ def hole_runner(motion_controller=None):
 						# Explosion ring colors
 						intensity = 1.0 - (distance / radius)
 						if frame < 20:
-							color = (255, int(100 * intensity), 0)  # Orange
+							color = (int(255 * intensity), 0, int(255 * intensity))  # Purple
 						elif frame < 40:
-							color = (255, int(255 * intensity), int(100 * intensity))  # Yellow-orange
+							color = (int(255 * intensity), int(100 * intensity), int(255 * intensity))  # Purple-pink
 						else:
-							color = (int(255 * intensity), int(100 * intensity), int(255 * intensity))  # Purple
+							color = (int(128 * intensity), 0, int(128 * intensity))  # Dark purple
 
 						cw.pixels[r, c] = color
 
