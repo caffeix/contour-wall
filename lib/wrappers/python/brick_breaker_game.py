@@ -47,6 +47,7 @@ class PoseController:
         self.show_window = show_window
         if cv is None or mp is None or not hasattr(mp, "solutions"):
             raise RuntimeError("MediaPipe Pose is unavailable.")
+        self.use_cuda = bool(getattr(cv, "cuda", None)) and cv.cuda.getCudaEnabledDeviceCount() > 0
         if sys.platform.startswith("win"):
             self.cap = cv.VideoCapture(camera_index, cv.CAP_DSHOW)
         else:
@@ -61,6 +62,7 @@ class PoseController:
             min_detection_confidence=0.3,
             min_tracking_confidence=0.3,
         )
+        self.gpu_frame = cv.cuda_GpuMat() if self.use_cuda else None
 
     def read_key(self):
         if not self.show_window or cv is None:
@@ -71,8 +73,14 @@ class PoseController:
         ret, frame = self.cap.read()
         if not ret:
             return None
-        frame = cv.flip(frame, 1)
-        rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        if self.use_cuda:
+            self.gpu_frame.upload(frame)
+            flipped = cv.cuda.flip(self.gpu_frame, 1)
+            rgb = cv.cuda.cvtColor(flipped, cv.COLOR_BGR2RGB).download()
+            frame = rgb[:, :, ::-1]
+        else:
+            frame = cv.flip(frame, 1)
+            rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
         results = self.pose.process(rgb)
         if self.show_window:
             cv.imshow("Camera", frame)
